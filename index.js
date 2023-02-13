@@ -3,6 +3,7 @@ const axios = require("axios");
 const {extractTo} = require("./EPUBToText");
 const models = require("./models");
 const SPARQL = require("sparql-client-2");
+const Sequelize = require('sequelize');
 
 const epubfile = "./epubs/dickens_un_drame_sous_la_revolution.epub"
 const imagewebroot = "./images"
@@ -45,10 +46,101 @@ function matchPercentage(str1, str2) {
   return ((maxLength - levenshteinDistance) / maxLength * 100).toFixed(2);
 }
 
+
+// initialize the database connection
+const sequelize = new Sequelize('dream_epub', 'root', '', {
+  host: 'localhost',
+  dialect: 'mysql'
+});
+
+// define the model for the table
+const EpubDB = sequelize.define('epubs', {
+  titleEpub: {
+    type: Sequelize.STRING,
+    allowNull: true
+  },
+  creatorEpub: {
+    type: Sequelize.STRING,
+    allowNull: true
+  },
+  publisherEpub: {
+    type: Sequelize.STRING,
+    allowNull: true
+  },
+  subjectEpub: {
+    type: Sequelize.STRING,
+    allowNull: true
+  },
+  titlePropre: {
+    type: Sequelize.STRING,
+    allowNull: true
+  },
+  titleCatalogue: {
+    type: Sequelize.STRING,
+    allowNull: true
+  },
+  authorFirsNameCatalog: {
+    type: Sequelize.STRING,
+    allowNull: true
+  },
+  authorLastNameCatalog: {
+    type: Sequelize.STRING,
+    allowNull: true
+  },
+  traducteurCatalog: {
+    type: Sequelize.STRING,
+    allowNull: true
+  },
+  langueCatalog: {
+    type: Sequelize.STRING,
+    allowNull: true
+  },
+  typeCatalog: {
+    type: Sequelize.STRING,
+    allowNull: true
+  },
+  subjectOpenLibrary: {
+    type: Sequelize.STRING,
+    allowNull: true
+  },
+  birthDateCatalog: {
+    type: Sequelize.STRING,
+    allowNull: true
+  },
+  deathDateCatalog: {
+    type: Sequelize.STRING,
+    allowNull: true
+  },
+  first_publish_yearOpenLibrary: {
+    type: Sequelize.STRING,
+    allowNull: true
+  },
+  genderDataBnf: {
+    type: Sequelize.STRING,
+    allowNull: true
+  },
+  age: {
+    type: Sequelize.STRING,
+    allowNull: true
+  },
+  descriptionEpub: {
+    type: Sequelize.STRING,
+    allowNull: true
+  },
+  path: {
+    type: Sequelize.STRING,
+    allowNull: true
+  }
+});
+
+// create the table in the database
+sequelize.sync({ force: true }).then(() => {
+  console.log('Table created successfully');
+});
+
 //Extraire
 const epubFunction = () => {
   const directoryPath = path.join(__dirname, 'epubs');
-  let data = []
   fs.readdir(directoryPath,async (err, files) => {
     //handling error
     if (err) {
@@ -57,12 +149,27 @@ const epubFunction = () => {
 
     for (var i = 0; i < files.length; i++) {
       let dataepub = await EPub.createAsync("epubs/"+files[i], imagewebroot, chapterwebroot);
-      
-      const mdata = JSON.stringify(dataepub.metadata)
-      data.push(JSON.parse(mdata))
+      const titlePropre = ""
+      const infos = await getInfo(titlePropre, dataepub.metadata.creator, "")
+      let age = 0
+      const md = {
+        titleEpub: dataepub.metadata.title,
+        creatorEpub: dataepub.metadata.creator,
+        publisherEpub: dataepub.metadata.publisher,
+        subjectEpub: dataepub.metadata.subject,
+        descriptionEpub: dataepub.metadata.description,
+        titlePropre
+      }
+      const mdata = {...md, ...infos, age}
+      //inserer dans la bdd
+      EpubDB.create(mdata).then((res) => {
+        console.log(res);
+      }).catch((err) => {
+        console.log(err);
+      }) 
     }
 
-    let headingColumnNames = []
+    /*let headingColumnNames = []
     for (var i = 0; i < data.length; i++) {
       headingColumnNames = headingColumnNames.concat(Object.keys(data[i]))
       headingColumnNames = headingColumnNames.filter((item, pos) => headingColumnNames.indexOf(item) === pos);      
@@ -83,7 +190,7 @@ const epubFunction = () => {
         });
       rowIndex++;
     });
-    wb.write('filename1.xlsx');
+    wb.write('filename1.xlsx');*/
   });
 }
 epubFunction()
@@ -382,7 +489,7 @@ const getInfo = async (title, author, nomFichier) => {
   }
   const openLibrary = await getInfoOpenLibrary(title, author)
   const genderDataBnf = await getGender(authorFirsNameCatalog+" "+authorLastNameCatalog)
-  return {traducteurCatalog, authorFirsNameCatalog, authorLastNameCatalog, authorDatesCatalog, typeCatalog, langueCatalog, titleCatalogue: obj.titleCatalogue, first_publish_yearOpenLibrary: openLibrary.first_publish_yearOpenLibrary, subjectOpenLibrary: openLibrary.subjectOpenLibrary, genderDataBnf}
+  return {traducteurCatalog, authorFirsNameCatalog, authorLastNameCatalog, birthDateCatalog: authorDatesCatalog.split("-")[0], deathDateCatalog: authorDatesCatalog.split("-")[1], typeCatalog, langueCatalog, titleCatalogue: obj.titleCatalogue, first_publish_yearOpenLibrary: openLibrary.first_publish_yearOpenLibrary, subjectOpenLibrary: openLibrary.subjectOpenLibrary, genderDataBnf}
 }
 
 async function main() {
