@@ -20,6 +20,7 @@
     "mysql2": "^2.3.3",
     "node-html-parser": "^6.1.4",
     "path": "^0.12.7",
+    "sparql-client-2": "^0.6.3",
     "xml-js": "^1.6.11"
   }
 }

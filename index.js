@@ -2,6 +2,7 @@ const EPub = require("epub2").EPub;
 const axios = require("axios");
 const {extractTo} = require("./EPUBToText");
 const models = require("./models");
+const SPARQL = require("sparql-client-2");
 
 const epubfile = "./epubs/dickens_un_drame_sous_la_revolution.epub"
 const imagewebroot = "./images"
@@ -184,7 +185,30 @@ const getInfoCatalogueAny = async (title, author) => {
 }
 
 const getInfoOpenLibrary = async (title, author) => {
-  return axios.get(`https://openlibrary.org/search.json?title=${title}&author=${author}`)
+  let foundSubject = false
+  let foundFirstPublishYear = false
+  let subject = ""
+  let firstPub = ""
+  const result = await axios.get(`https://openlibrary.org/search.json?title=${title}&author=${author}`)
+  if(result.data.numFound) {
+    console.log(result.data.numFound);
+    let i = 0
+    while((!foundFirstPublishYear || !foundSubject) && i < result.data.docs.length) {
+      if(result.data.docs[i].subject) {
+        subject = result.data.docs[i].subject
+        foundSubject = true
+      }
+      if(result.data.docs[i].first_publish_year){
+        firstPub = result.data.docs[i].first_publish_year
+        foundFirstPublishYear = true
+      }
+      i++
+    }
+    if(foundFirstPublishYear && foundSubject) {
+      return {first_publish_yearOpenLibrary: `${firstPub}`, subjectOpenLibrary: `${subject}`}
+    }
+  }
+  return {first_publish_yearOpenLibrary: "", subjectOpenLibrary: ""}
 }
 
 const verification = async (title, author, nomFichier) => {
@@ -249,6 +273,35 @@ const verification = async (title, author, nomFichier) => {
     console.log(titleCatalogue);
   }
   return { records, titleCatalogue, typeAny}
+}
+
+async function getGender(fullName) {
+  const sources = [
+    //{ url: "https://data.bnf.fr/sparql", prefix: "RDAgroup2elements" },
+    { url: "https://data.bnf.fr/sparql", prefix: "foaf" },
+    //{ url: "http://dbpedia.org/sparql", prefix: "rdf" },
+    //{ url: "http://dbpedia.org/sparql", prefix: "owl" },
+    //{ url: "https://query.wikidata.org/sparql", prefix: "wikidata" }
+  ];
+  for (const source of sources) {
+    const client = new SPARQL(source.url);
+    const query = `
+      PREFIX ${source.prefix}: <http://xmlns.com/${source.prefix}/0.1/>
+      PREFIX bio: <http://vocab.org/bio/0.1/>
+      SELECT  ?gender   
+      WHERE {
+          ?auteur ${source.prefix}:gender ?gender.
+          ?auteur ${source.prefix}:name  '${fullName}'.
+      }
+      LIMIT 100
+    `;
+    const result = await client.query(query, { accept: 'application/sparql-results+json' });
+    const results = result.results.bindings;
+    if (results.length) {
+      return results[0].gender.value;
+    }
+  }
+  return "";
 }
 
 const getInfo = async (title, author, nomFichier) => {
@@ -327,10 +380,17 @@ const getInfo = async (title, author, nomFichier) => {
       i++
     }
   }
-  console.log(traducteurCatalog, authorFirsNameCatalog, authorLastNameCatalog, authorDatesCatalog, typeCatalog, langueCatalog, obj.titleCatalogue)
+  const openLibrary = await getInfoOpenLibrary(title, author)
+  const genderDataBnf = await getGender(authorFirsNameCatalog+" "+authorLastNameCatalog)
+  return {traducteurCatalog, authorFirsNameCatalog, authorLastNameCatalog, authorDatesCatalog, typeCatalog, langueCatalog, titleCatalogue: obj.titleCatalogue, first_publish_yearOpenLibrary: openLibrary.first_publish_yearOpenLibrary, subjectOpenLibrary: openLibrary.subjectOpenLibrary, genderDataBnf}
 }
 
-getInfo("Pride and Prejudice", "	Jane Austen", "")
+async function main() {
+  const infos = await getInfo("La bataille", "Patrick Rambaud", "")
+  console.log(infos)
+}
+
+main()
 /*//Transformer epub to txt
 extractTo(epubfile,textFolder , (err) => {
   console.log(err);
